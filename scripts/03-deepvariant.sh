@@ -21,6 +21,7 @@
 #   MODEL_TYPE   WGS (default), WES, PACBIO or ONT_R104
 #   THREADS      CPUs and DeepVariant shards (default 8)
 #   DV_MEM       container memory (default 32g)
+#   DEEPVARIANT_DISABLE_SMALL_MODEL  true/1: disable the Small Model; false/0: default
 set -euo pipefail
 
 SAMPLE=${1:?Usage: $0 <sample_name> [male|female]}
@@ -41,6 +42,11 @@ if [[ ! "$VCF_OUT_DIR" =~ ^[A-Za-z0-9._-]+$ ]] || [ "$VCF_OUT_DIR" = . ] || [ "$
 fi
 INTERVALS=${INTERVALS:-}
 DV_MEM=${DV_MEM:-32g}
+case "${DEEPVARIANT_DISABLE_SMALL_MODEL:-false}" in
+  true|1) DISABLE_SMALL_MODEL=true ;;
+  false|0) DISABLE_SMALL_MODEL=false ;;
+  *) echo "ERROR: DEEPVARIANT_DISABLE_SMALL_MODEL must be true, false, 1 or 0." >&2; exit 2 ;;
+esac
 SAMPLE_DIR="${GENOME_DIR}/${SAMPLE}"
 BAM="${SAMPLE_DIR}/${ALIGN_DIR}/${SAMPLE}_sorted.bam"
 REF="$REF_FASTA"
@@ -64,6 +70,7 @@ esac
 echo "=== DeepVariant: ${SAMPLE} ==="
 echo "Input BAM: ${BAM}"
 echo "Model type: ${MODEL_TYPE}"
+echo "DeepVariant disable_small_model=${DISABLE_SMALL_MODEL}"
 echo "Reference: ${REF}"
 echo "Threads: ${THREADS}, memory: ${DV_MEM}"
 if [ -n "$INTERVALS" ]; then
@@ -101,6 +108,9 @@ DV_ARGS=(
   --sample_name="${SAMPLE}"
   --num_shards="${THREADS}"
 )
+if [ "$DISABLE_SMALL_MODEL" = true ]; then
+  DV_ARGS+=(--disable_small_model=true)
+fi
 if [ "$SEX" = male ]; then
   DV_ARGS+=("--haploid_contigs=chrX,chrY" --par_regions_bed=/pgp/par_grch38.bed)
 fi

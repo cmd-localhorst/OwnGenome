@@ -13,6 +13,8 @@
 #   and VCF that run published.
 # Switches: SKIP_VALIDATION=true; THREADS=N (--max_cpus); SKIP_TRIM=true (--skip_trim);
 #   INTERVALS="chr20 chr22" (--intervals); ALIGN_DIR=dir (the BAM from <sample>/dir/); TOOLS=a,b
+#   DEEPVARIANT_DISABLE_SMALL_MODEL=true (--deepvariant_disable_small_model true; default false);
+#   an explicit Nextflow option after the sex overrides this environment setting.
 #   (only these --tools names; parascopy, paraphase, y_haplogroup, y_str, consumer_export, bloodtype, ancient, lpa, vntyper, viral, chip, mei, mocha and locityper run only when named; paraphase needs the BAM
 #   to be PacBio HiFi, PL:PACBIO, or its step fails and the rest goes on; cyrius runs when setup.sh --cyrius installed it, whose
 #   licence is non-commercial: TOOLS without cyrius leaves it out); KIR=true (KIR genes with HLA);
@@ -49,7 +51,7 @@ shift 2; SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd) USER_THREADS=${THREADS:-}
 # This command as given, for bin/owngenome_recheck.py --rerun (logs/run_status.tsv, 'meta command'): the switches
 # below that are set, then the arguments, each shell-quoted, run from this directory so relative paths still hold.
 # 'meta switches' names them all, so a replay drops one set now that the run did not have.
-SWITCHES=(GENOME_DIR SKIP_VALIDATION THREADS SKIP_TRIM INTERVALS ALIGN_DIR TOOLS KIR HLA_QC HPO REF_FASTA EH_CATALOG
+SWITCHES=(GENOME_DIR SKIP_VALIDATION THREADS SKIP_TRIM INTERVALS DEEPVARIANT_DISABLE_SMALL_MODEL ALIGN_DIR TOOLS KIR HLA_QC HPO REF_FASTA EH_CATALOG
   MANTA_CALL_REGIONS PARASCOPY_POPULATION PARAPHASE_REGIONS ANCESTRY_PANEL ANCESTRY_FINE_DIR ARCHAIC_DIR ARCHAIC_POP
   PGSC_CALC_DIR ANCIENT_PANEL_DIR VIRAL_REF MEGANE_KMERS MOCHA_DATA GRIDSS IMPUTATION SOMATIC EXTRA_CALLERS BENCHMARK
   FAMILIES OWNGENOME_LIVE_URL LOCITYPER_DATA LOCITYPER_BG_REGION NXF_VER NXF_WORK NXF_HOME NXF_OFFLINE)
@@ -61,6 +63,11 @@ export GENOME_DIR=${GENOME_DIR:?Set GENOME_DIR to your data directory}
 # shellcheck source=lib/common.sh
 . "${SCRIPT_DIR}/lib/common.sh"
 validate_sample "$SAMPLE"
+case "${DEEPVARIANT_DISABLE_SMALL_MODEL:-false}" in
+  true|1) DISABLE_SMALL_MODEL=true ;;
+  false|0) DISABLE_SMALL_MODEL=false ;;
+  *) echo "ERROR: DEEPVARIANT_DISABLE_SMALL_MODEL must be true, false, 1 or 0." >&2; exit 2 ;;
+esac
 G=$GENOME_DIR S="${GENOME_DIR}/${SAMPLE}" LOG_DIR="${GENOME_DIR}/${SAMPLE}/logs" T=${TOOLS:-} C=${EXTRA_CALLERS:-}
 on() { [[ "${!1:-}" =~ ^(true|1)$ ]]; }
 # The ClinVar files are shared by every sample of GENOME_DIR. bin/owngenome_recheck.py --refresh-clinvar holds this
@@ -300,6 +307,13 @@ if [[ " $* " != *" --publish_dir_mode"* && " $* " != *" -w "* && " $* " != *" -w
   rm -f "$LP" "${S}/.pgp-link-probe.$$" "${G}/.pgp-link-probe.$$"
 fi
 if on SKIP_TRIM; then NF+=(--skip_trim true); fi
+if [ -n "${DEEPVARIANT_DISABLE_SMALL_MODEL+x}" ]; then
+  DV_CLI=false
+  for a in "$@"; do
+    case "$a" in --deepvariant_disable_small_model|--deepvariant_disable_small_model=*) DV_CLI=true ;; esac
+  done
+  if [ "$DV_CLI" = false ]; then NF+=(--deepvariant_disable_small_model "$DISABLE_SMALL_MODEL"); fi
+fi
 for v in GRIDSS:04b-gridss IMPUTATION:14-imputation-prep SOMATIC:29-mutect2-somatic; do if on "${v%%:*}"; then OPTIN+=("${v#*:}.sh"); fi; done
 for c in ${C//,/ }; do OPTIN+=("$(cd "$SCRIPT_DIR" && compgen -G "03[a-d]-${c}*.sh")") || { echo "ERROR: unknown caller '${c}' in EXTRA_CALLERS (gatk, freebayes, strelka2, octopus)" >&2; exit 2; }; done
 if ! on BENCHMARK; then :; elif [ -n "$C" ] || compgen -G "${S}/vcf_*/${SAMPLE}.vcf.gz" >/dev/null || [ -f "${S}/vcf_strelka2/results/variants/variants.vcf.gz" ]; then OPTIN+=(benchmark-variants.sh)

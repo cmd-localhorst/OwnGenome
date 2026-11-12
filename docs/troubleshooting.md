@@ -531,6 +531,16 @@ The `.mmi` index build is a one-time step (1-3 minutes in the measured runs, [ru
 
 ---
 
+### Step 3: call_variants_outputs sanity check failure
+
+**Symptom:** DeepVariant 1.10.0 stops in postprocessing with `ValueError: call_variants_outputs did not pass sanity check.`
+
+**Evidence and limits:** A reported WGS failure was narrowed to multiallelic records with incomplete allele combinations labelled `small_model`. Saved CNN outputs passed postprocessing in isolation, while adding the saved Small Model records reproduced the failure. Small regions recalculated with either setting succeeded. This implicates the Small Model intermediate records in that run; it does not prove the final root cause or establish that CNN-only salvage is a complete call set.
+
+**Prepared workaround:** Set Nextflow `--deepvariant_disable_small_model true`, or `DEEPVARIANT_DISABLE_SMALL_MODEL=true` for `scripts/03-deepvariant.sh` and `scripts/run-all.sh`. The default is `false`. Keep the failed run and diagnostics privately, and follow the [BAM-only recovery plan](03-variant-calling.md#recovery-from-an-existing-bam) to reuse alignment without FASTQ processing. That plan is for later approved execution; it includes a separate output directory and explicit cache checks. `run-all.sh` can retain an old FASTQ row or reuse a supplied VCF, so changing the option alone does not guarantee the intended recall.
+
+The option reruns the whole DeepVariant task, can increase runtime and change calls, and has not been validated on the affected full WGS. Do not disable sanity checks, silently drop variants, or mix intermediate files from different attempts. If a fresh run still fails, preserve the error and stop for investigation.
+
 ### Step 3: DeepVariant and a GPU
 
 **Symptom:** You want to use a GPU to speed DeepVariant up.

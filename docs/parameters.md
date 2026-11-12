@@ -24,6 +24,7 @@ Alignment and variant calling of the samplesheet rows that start from FASTQ or f
 | `--skip_trim` | `false` | Align the raw reads, without fastp trimming (SKIP_TRIM=true in scripts/01b-fastp-qc.sh). |
 | `--minimap2_index` | none | minimap2 index built with -x sr. Default: &lt;reference base&gt;.sr.mmi beside the FASTA, the file scripts/02-alignment.sh builds; when neither exists the run builds one. |
 | `--intervals` | none | Space-separated regions DeepVariant calls (its --regions, INTERVALS in scripts/03-deepvariant.sh). Unset calls the whole genome. |
+| `--deepvariant_disable_small_model` | `false` | Disable DeepVariant's Small Model with `--disable_small_model=true`; applies only to rows called here. Scripts: `DEEPVARIANT_DISABLE_SMALL_MODEL=true`. See [recovery from an existing BAM](03-variant-calling.md#recovery-from-an-existing-bam). |
 | `--sex_check` | `fail` | What to do when the sex inferred from a BAM differs from the samplesheet's, by indexcov (every BAM, before any BAM step) or by somalier (with sample_qc): fail stops the run; warn logs it and goes on with the declared sex. One of: `fail`, `warn`. |
 
 ## Reference data

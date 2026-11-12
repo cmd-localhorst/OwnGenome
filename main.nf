@@ -84,6 +84,9 @@ workflow {
     if (!(params.sex_check in ['fail', 'warn'])) {
         error "--sex_check must be 'fail' or 'warn', got '${params.sex_check}'."
     }
+    if (!(params.deepvariant_disable_small_model.toString() in ['true', 'false'])) {
+        error "--deepvariant_disable_small_model takes no value (or true / false), got '${params.deepvariant_disable_small_model}'."
+    }
     if (!(params.freemix_warn instanceof Number) || params.freemix_warn < 0 || params.freemix_warn >= 1) {
         error "--freemix_warn must be a fraction from 0 up to (not including) 1 (FREEMIX above it is reported " +
               "as possible contamination), got '${params.freemix_warn}'."
