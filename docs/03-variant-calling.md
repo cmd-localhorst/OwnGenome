@@ -79,8 +79,70 @@ Settings, all optional:
 | `VCF_OUT_DIR` | `vcf` | where the VCF and gVCF go, inside the sample directory |
 | `MODEL_TYPE` | `WGS` | `WGS`, `WES`, `PACBIO` or `ONT_R104` |
 | `INTERVALS` | whole genome | regions to call |
+| `DEEPVARIANT_DISABLE_SMALL_MODEL` | `false` | `true` or `1` adds `--disable_small_model=true`; `false` or `0` keeps the caller default |
 
 DeepVariant writes its outputs under `.part` names, and the script renames them only when the VCF, the gVCF and both indexes are complete, so a killed run leaves no VCF that looks finished. Its intermediate files go to `deepvariant_tmp/` in the output directory, not into the container's own disk, and are removed at the end of a run.
+
+## Small Model option
+
+`deepvariant_disable_small_model` defaults to `false`. With `true`, OwnGenome passes exactly `--disable_small_model=true` to DeepVariant 1.10.0. Otherwise it omits that flag and preserves DeepVariant's default. The [upstream 1.10.0 runner](https://github.com/google/deepvariant/blob/v1.10.0/scripts/run_deepvariant.py) uses this switch to disable Small Model calls during `make_examples` and to omit the Small Model records from postprocessing.
+
+```bash
+# Direct Nextflow: append to the usual run command (true/false, or a bare flag).
+# --deepvariant_disable_small_model true
+
+# Standalone script, reusing the existing BAM:
+DEEPVARIANT_DISABLE_SMALL_MODEL=true VCF_OUT_DIR=vcf_no_small_model \
+  ./scripts/03-deepvariant.sh your_sample male
+
+# Launcher: the same environment variable, or the Nextflow option after sex.
+# Input selection still applies; this option does not force a recall.
+DEEPVARIANT_DISABLE_SMALL_MODEL=true ./scripts/run-all.sh your_sample male
+```
+
+The environment variable accepts `true`/`1` and `false`/`0` (unset or empty means `false`); other values fail before calling. An explicit Nextflow option after the sex overrides the launcher's environment setting. `run-all.sh` saves the variable in `logs/run_status.tsv` for replay. The standalone log and each real Nextflow DeepVariant task's `.command.out` record `DeepVariant disable_small_model=true` or `false`; `.command.sh` records the actual flag. A cached task retains the log from its original execution.
+
+The option affects only DeepVariant calls. A samplesheet row supplying a VCF is not called again, even if it also supplies a BAM. There is no automatic retry without the Small Model, no bypass of DeepVariant's sanity checks, and no removal of suspect variants. Calling without the Small Model can take longer and change calls; runtime and accuracy for the affected WGS dataset have not been measured. A successful small-region run does not establish whole-genome success.
+
+## Recovery from an existing BAM
+
+This is a prepared procedure for a later, separately approved analysis restart. No analysis restart is part of this change. All names below are placeholders; keep real sample identifiers, paths, logs and data outside git.
+
+1. Preserve the original failed run, its logs, `.nextflow/`, and `work/`. Do not run `nextflow clean`, delete intermediates, or edit cached task scripts. Stop any old active run before a later restart. Do not combine records from different calling attempts.
+2. Confirm the BAM and its matching BAI are complete, coordinate-sorted and from the intended alignment. Use the same GRCh38 FASTA and FAI used for alignment, with compatible contig names, and the verified sample sex. Later preflight checks can include `samtools quickcheck`, the BAM header, and index validation. Do not rebuild or touch the existing inputs merely to prepare the restart. Size/mtime alone is not an integrity check.
+3. Prepare an explicit **BAM-only** samplesheet outside the checkout. Leave out FASTQ, VCF and gVCF columns, including paths to any partial or older calls. For example:
+
+   ```csv
+   sample,bam,bam_index,sex
+   your_sample,/path/to/data/your_sample/aligned/your_sample_sorted.bam,/path/to/data/your_sample/aligned/your_sample_sorted.bam.bai,male
+   ```
+
+   `bam_index` must name the matching index with a filename the callers discover beside the staged BAM; use `<bam>.bai`, as in the example. The column does not rename an arbitrarily named index or pass a separate index flag to DeepVariant. The standalone script requires `<sample>_sorted.bam.bai` beside `<sample>_sorted.bam`, under `ALIGN_DIR` (default `aligned`).
+4. Choose a new results directory, separate from the previous output, with enough disk and time for the complete DeepVariant task. Keep the same pipeline checkout/feature commit, reference, resource limits and installed annotation settings for subsequent resumes. Select downstream tools deliberately: `--tools ' '` calls the BAM and performs the mandatory indexcov sex check and VCF intake checks without optional analyses. The value is one space, trimmed to an empty tool list; a completely empty CLI value is interpreted as a bare flag by Nextflow 26.10.5.
+5. Review the following command template, replacing every path and the resource limits. **Do not execute until the analysis restart is approved.**
+
+   ```bash
+   # FUTURE EXECUTION ONLY — from the original Nextflow launch directory
+   nextflow run /path/to/OwnGenome/main.nf -profile docker \
+     -resume PREVIOUS_SESSION_ID -work-dir /path/to/original/work \
+     --input /path/to/bam-only.csv \
+     --reference /path/to/reference/GRCh38_no_alt_analysis_set.fasta \
+     --outdir /path/to/recovery-results \
+     --tools ' ' --deepvariant_disable_small_model true \
+     --max_cpus 8 --max_memory 32.GB \
+     -with-trace /path/to/recovery-trace.tsv
+   ```
+
+   Read the session ID from the original launch directory's `nextflow log` before the approved run. Preserve any original `NXF_WORK`/cache configuration. For a deliberately independent run, use a new launch/work directory and omit `-resume`; BAM-only input still prevents trimming or alignment. A later resume of that run uses its own session ID and work directory.
+6. At the approved execution, verify the trace has `INDEXCOV` and `DEEPVARIANT`, with no `FASTP`, `MINIMAP2_INDEX` or `ALIGN_MINIMAP2` task. Check the DeepVariant task log for `disable_small_model=true` and its command for `--disable_small_model=true`. Keep the default sex-check failure policy; resolve any mismatch before proceeding. Accept results only after DeepVariant finishes successfully with both VCF/gVCF pairs and readable matching indexes. Subsequent annotation/reporting must use the new calls, rather than mixing them with old results. Record version, command, model setting and checks privately for comparison.
+
+### Cache and launcher limits
+
+Nextflow [hashes task code, inputs and referenced globals](https://docs.seqera.io/nextflow/cache-and-resume/). `-resume` requires both the matching task-cache entry under the original launch directory's `.nextflow/cache` and the corresponding outputs in `work/`; published files alone do not restore a cache. Changing this model setting reruns the entire `DEEPVARIANT` task, not just `postprocess_variants`. The new task script/log also invalidates old DeepVariant tasks even with `false`. FASTQ processing/alignment are unchanged and remain cache-eligible when all their inputs and hashes match, but BAM-only recovery avoids relying on that eligibility. A published BAM used as a new input path can also change downstream hashes. Changed VCF/gVCF inputs can rerun dependent analyses; do not promise that every other task will be cached.
+
+Keep value representations consistent on repeated resumes: Nextflow 26.10.5 can hash the default config Boolean `false` differently from a CLI string `false` (and a bare `true` differently from a string `true`), although the effective commands are the same. The no-data test checks reuse with identical options, DeepVariant invalidation when enabled, and indexcov reuse across the change.
+
+`run-all.sh` always supplies `-resume`, prefers a completed BAM+VCF over a BAM-only input, and may keep a failed run's old FASTQ samplesheet row. Its environment option does not override input selection. For this recovery use the direct BAM-only command above; do not delete or rename original calls merely to influence the launcher's choice. The standalone step also always calls again and cleans its intermediate directory; use a new `VCF_OUT_DIR` to keep earlier calls. Neither entry point automatically reuses saved CNN/Small Model intermediate results. Such a postprocess-only salvage would need a separately validated procedure and may lack candidates previously handled by the Small Model.
 
 ## Sex chromosomes
 
@@ -112,4 +174,4 @@ GATK HaplotypeCaller (03a) multithreads only its PairHMM and FreeBayes (03b) run
   - Repeat expansions (use ExpansionHunter, step 9)
   - Copy number variants (use CNVpytor or GATK gCNV)
 - bcftools can also call variants but is significantly less accurate than DeepVariant
-- **The small model.** DeepVariant 1.8.0 added a small model, on by default in `run_deepvariant`, that calls the sites it finds easy and passes the rest to the full model. DeepVariant's release notes give a speed-up of about 1.7x (40% less runtime) for WGS with similar or better accuracy, and the flag `--disable_small_model=true` to turn it off. This pipeline runs DeepVariant 1.10.0 with the default, so the small model is on. On one real ~30x genome, a site whose alt reads came from contaminating cDNA was `RefCall` under DeepVariant 1.6 and `PASS` at a modest GQ under 1.10, with the same allele depths. We have not measured whether the small model caused that change, and the fixture has no such site. Turning the small model off would cost about the speed-up above, so the default stays. When such a site is a ClinVar hit, step 06's [cDNA read check](06-clinvar-screen.md#the-cdna-read-check) can flag it from the reads, whatever made it PASS
+- **The small model.** The Small Model calls easier sites during `make_examples` and passes the remaining candidates to the CNN. OwnGenome preserves DeepVariant 1.10.0's default unless the [Small Model option](#small-model-option) is enabled. The option is a workaround/control for investigation, not proof of the cause of a failed run. When a call's alt reads come from contaminating cDNA, step 06's [cDNA read check](06-clinvar-screen.md#the-cdna-read-check) can flag it independently of which model made the call.

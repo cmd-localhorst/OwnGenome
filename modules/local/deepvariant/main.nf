@@ -43,7 +43,10 @@ process DEEPVARIANT {
     script:
     def haploid = meta.sex == 'male' ? "--haploid_contigs=chrX,chrY --par_regions_bed=${par_bed}" : ''
     def regions = params.intervals ? "--regions \"${params.intervals}\"" : ''
+    def disable_small_model = params.deepvariant_disable_small_model.toString() == 'true'
+    def small_model = disable_small_model ? '--disable_small_model=true' : ''
     """
+    echo "DeepVariant disable_small_model=${disable_small_model}"
     /opt/deepvariant/bin/run_deepvariant \\
         --model_type=WGS \\
         --ref=${reference} \\
@@ -53,6 +56,7 @@ process DEEPVARIANT {
         --intermediate_results_dir=deepvariant_tmp \\
         --sample_name=${meta.id} \\
         --num_shards=${task.cpus} \\
+        ${small_model} \\
         ${haploid} \\
         ${regions}
     rm -rf deepvariant_tmp

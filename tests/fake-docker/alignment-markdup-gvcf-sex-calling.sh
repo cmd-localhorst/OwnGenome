@@ -73,6 +73,27 @@ done
 bgzf_complete() { [ "$(tail -c 28 "$1" | od -An -v -tx1 | tr -d ' \n')" = 1f8b08040000000000ff0600424302001b0003000000000000000000 ]; }
 bgzf_complete "${V}/sample1.g.vcf.gz" || fail "the gVCF is not the file DeepVariant wrote"
 [ -z "$(leftovers)" ] || fail "files left after step 03: $(leftovers)"
+if grep -q -- '--disable_small_model' <<<"$L"; then fail "default disables the Small Model"; fi
+output_has dv-male 'disable_small_model=false'
+
+# Small Model opt-out preserves every other DeepVariant argument.
+base_line=$L
+for value in true 1; do
+  : > "$FAKE_DOCKER_LOG"
+  run_expect 0 "dv-no-small-${value}" env THREADS=2 DV_MEM=20g DEEPVARIANT_DISABLE_SMALL_MODEL="$value" "${SCRIPTS}/03-deepvariant.sh" sample1 male
+  L=$(dv_line)
+  [ "${L/--disable_small_model=true /}" = "$base_line" ] || fail "opt-out changed other arguments: ${L}"
+  output_has "dv-no-small-${value}" 'disable_small_model=true'
+done
+for value in false 0; do
+  : > "$FAKE_DOCKER_LOG"
+  run_expect 0 "dv-small-${value}" env THREADS=2 DV_MEM=20g DEEPVARIANT_DISABLE_SMALL_MODEL="$value" "${SCRIPTS}/03-deepvariant.sh" sample1 male
+  [ "$(dv_line)" = "$base_line" ] || fail "explicit false changed default arguments"
+done
+: > "$FAKE_DOCKER_LOG"
+run_expect 2 dv-small-invalid env DEEPVARIANT_DISABLE_SMALL_MODEL=typo "${SCRIPTS}/03-deepvariant.sh" sample1 male
+[ ! -s "$FAKE_DOCKER_LOG" ] || fail "invalid Small Model value started Docker"
+
 output_has dv-male 'chrX and chrY haploid outside the PARs'
 
 # --- 03 female, no sex, a wrong sex ---------------------------------------------

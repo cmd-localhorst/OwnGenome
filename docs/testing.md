@@ -1,5 +1,18 @@
 # Testing
 
+## DeepVariant command and cache regression tests
+
+`python3 tests/test_deepvariant_small_model.py` needs Python 3, Java and the Nextflow version pinned in `versions.env`. It runs the production `UPSTREAM` workflow and the real DeepVariant task script against invented placeholder files, replacing only the external executables with argument recorders. No Docker image, real genome or WGS calculation is used. It checks default/false/true/bare-flag arguments, region quoting, ploidy, shard count, effective-setting logs, BAM-only routing, parameter validation, cache reuse with identical options, DeepVariant invalidation after enabling the option and unchanged indexcov reuse. The Nextflow CI matrix runs it on both tested version lines.
+
+The existing fake-Docker suite additionally checks the standalone script's complete command and `run-all.sh` environment forwarding, explicit CLI precedence, replay metadata and invalid values:
+
+```bash
+scripts/ci/run-fake-docker-suite.sh alignment-markdup-gvcf-sex-calling run-all-switches
+python3 tests/test_parameters_doc.py
+```
+
+These tests establish command generation and orchestration. They do not reproduce the reported multiallelic consistency failure, measure biological accuracy or prove that a full WGS will finish. The [recovery plan](03-variant-calling.md#recovery-from-an-existing-bam) is prepared separately and is not executed by these tests.
+
 This page is for contributors. It says what CI runs, how the end-to-end test works, and how to change its data.
 
 The stub runs in `nextflow.yml` check that the Nextflow wiring holds together, and `container-test.yml` runs each changed image's own tool on the fixture. Neither runs a pipeline step as the scripts and modules call it, so a step can be broken in real use while both stay green. The **E2E** workflow ([`.github/workflows/e2e.yml`](https://github.com/GeiserX/OwnGenome/blob/main/.github/workflows/e2e.yml)) closes that gap: it runs the real tools, in the pinned containers, on a small slice of a public genome, and checks what they write.

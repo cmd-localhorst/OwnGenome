@@ -102,6 +102,10 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: nextflow config main.nf -profile docker > /dev/null
 
+      - name: DeepVariant arguments and resume without Docker or genomic data
+        if: steps.scope.outputs.run == 'true'
+        run: python3 tests/test_deepvariant_small_model.py
+
       # Parses every .nf and .config file with the strict syntax and fails on
       # an error, which `nextflow run main.nf -help` never did.
       - name: Lint the pipeline

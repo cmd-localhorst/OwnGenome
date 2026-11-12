@@ -108,3 +108,25 @@ run_expect 2 badcaller env EXTRA_CALLERS=gatk,bogus "${SCRIPTS}/run-all.sh" samp
 output_has badcaller "unknown caller 'bogus'"
 [ "$(grep -c '^nextflow :: ' "$FAKE_DOCKER_LOG")" -eq "$n" ] || fail "nextflow started despite an unknown name"
 echo "Switches map onto nextflow flags; script-only steps run after the pipeline."
+
+# The Small Model environment option reaches Nextflow and replay metadata.
+: > "$FAKE_DOCKER_LOG"
+run_expect 0 dv-default env TOOLS=pharmcat "${SCRIPTS}/run-all.sh" sample1 male
+lacks_arg --deepvariant_disable_small_model "with the default environment"
+for value in true 1 false 0; do
+  want=false; [[ "$value" != true && "$value" != 1 ]] || want=true
+  run_expect 0 "dv-switch-${value}" env TOOLS=pharmcat DEEPVARIANT_DISABLE_SMALL_MODEL="$value" "${SCRIPTS}/run-all.sh" sample1 male
+  has_args --deepvariant_disable_small_model "$want"
+  grep -qF "DEEPVARIANT_DISABLE_SMALL_MODEL=${value}" "${G}/sample1/logs/run_status.tsv" || fail "Small Model switch missing from replay command"
+  grep -qE '^meta[[:space:]]switches[[:space:]].*DEEPVARIANT_DISABLE_SMALL_MODEL' "${G}/sample1/logs/run_status.tsv" || fail "Small Model switch missing from replay reset list"
+done
+for cli in '--deepvariant_disable_small_model false' '--deepvariant_disable_small_model=false'; do
+  # Intentional word splitting tests the two supported Nextflow spellings.
+  # shellcheck disable=SC2086
+  run_expect 0 dv-cli-wins env TOOLS=pharmcat DEEPVARIANT_DISABLE_SMALL_MODEL=true "${SCRIPTS}/run-all.sh" sample1 male $cli
+  [ "$(grep -o -- '--deepvariant_disable_small_model' <<<"$(last)" | wc -l)" -eq 1 ] || fail "launcher passed the Small Model option twice"
+  grep -qF -- "$cli" <<<"$(last)" || fail "explicit Nextflow value did not win"
+done
+: > "$FAKE_DOCKER_LOG"
+run_expect 2 dv-invalid env DEEPVARIANT_DISABLE_SMALL_MODEL=typo "${SCRIPTS}/run-all.sh" sample1 male
+if grep -q '^nextflow .*run ' "$FAKE_DOCKER_LOG"; then fail "invalid Small Model value launched Nextflow"; fi
