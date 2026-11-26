@@ -51,10 +51,26 @@ EXPANSIONHUNTER_IMAGE=$(sed -n 's/^EXPANSIONHUNTER_IMAGE="\(.*\)".*/\1/p' "${REP
 # Step 43 names its data folder after the archaic data version.
 AV=$(sed -n 's/^ARCHAIC_DATA_VERSION="\(.*\)".*/\1/p' "${REPO_ROOT}/versions.env")
 [ -n "$AV" ] || fail "cannot read ARCHAIC_DATA_VERSION from versions.env"
+# Fake Docker reports 16 GiB of memory.
+MEM=$(host_mem_gb)
+LIMITED=false
+if [ "$MEM" -gt 16 ] || [ "$MEM" -lt 1 ]; then
+  MEM=16
+  LIMITED=true
+fi
+EXC="${G}/sample1/nextflow/executor.config"
+
 want="nextflow :: cwd=$(cd "${G}/sample1/nextflow" && pwd) :: NXF_VER=${NV} :: $(printf '%q ' run "${REPO_ROOT}/main.nf" -profile docker -resume \
   --input "$SHEET" --reference "${G}/reference/GRCh38_no_alt_analysis_set.fasta" --outdir "$G" --tools "$TOOLS" \
   --clinvar "$CV" --clinvar_index "${CV}.tbi" --expansion_catalog "${G}/reference/expansionhunter_variant_catalog-${EXPANSIONHUNTER_IMAGE##*:}.json" \
-  --mito_clinvar "${G}/clinvar/clinvar_chr.vcf.gz" --max_cpus "$(host_cpus)" --max_memory "$(host_mem_gb).GB")"
+  --mito_clinvar "${G}/clinvar/clinvar_chr.vcf.gz" --max_cpus "$(host_cpus)" --max_memory "${MEM}.GB")"
+if $LIMITED; then
+  want+="$(printf '%q ' -c "$EXC")"
+  diff -u <(printf "executor {\n    cpus   = %s\n    memory = '%s GB'\n}\n" "$(host_cpus)" "$MEM") "$EXC" \
+    || fail "executor.config differs"
+else
+  [ ! -e "$EXC" ] || fail "unexpected executor.config"
+fi
 if [ "$(id -u)" -eq 0 ] || [ "$(cat /proc/sys/fs/protected_hardlinks 2>/dev/null)" = 0 ]; then want+="--publish_dir_mode link "; fi
 [ "$NFLOG" = "$want" ] || fail "nextflow arguments differ:
   got:  ${NFLOG}
@@ -94,4 +110,7 @@ grep -q $'^step\t21\tskipped (not installed: setup.sh --cyrius (non-commercial l
 for s in 06 07 16 27 28; do grep -q $'^step\t'"${s}"$'\tok$' "$STATUS" || fail "run_status.tsv lacks step ${s} ok: $(cat "$STATUS")"; done
 grep -q $'^run\twritten_by\trun-all.sh' "${G}/sample1/run_manifest.tsv" || fail "no run manifest from run-all.sh"
 for l in 24-html-report generate-report; do [ -s "${G}/sample1/logs/${l}.log" ] || fail "the report ${l} did not run"; done
+# The last step writes the file OwnHealth imports (scripts/ownhealth-facts.sh, docs/ownhealth.md).
+grep -q '^run image=.* :: .* /pgp-bin/og facts --sample sample1 --sample-dir /genome/sample1 --reference /genome/reference/GRCh38_no_alt_analysis_set.fasta --assets /pgp-assets $' "$FAKE_DOCKER_LOG" \
+  || fail "run-all.sh did not run og facts for the OwnHealth file"
 echo "run-all.sh validated the setup, wrote the samplesheet and started nextflow once with the default flags."

@@ -9,6 +9,7 @@ import csv
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -16,6 +17,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@unittest.skipUnless(shutil.which("nextflow"), "Nextflow is required")
 class SmallModelTest(unittest.TestCase):
     def test_commands_and_resume(self):
         with tempfile.TemporaryDirectory(prefix="og-dv-test-") as tmp:
