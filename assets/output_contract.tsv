@@ -284,6 +284,7 @@ param	skip_trim	-	-	-	-	stable	-	-
 param	minimap2_index	-	-	-	-	stable	-	-
 param	intervals	-	-	-	-	stable	-	-
 param	model_type	-	-	-	-	stable	-	-
+param	deepvariant_disable_small_model	-	-	-	-	stable	-	-
 param	capture_bed	-	-	-	-	stable	-	-
 param	sex_check	-	-	-	-	stable	-	-
 param	reference	-	-	-	-	stable	-	-
@@ -417,6 +418,7 @@ switch	SKIP_VALIDATION	-	-	-	-	stable	-	-
 switch	THREADS	-	-	-	-	stable	-	-
 switch	SKIP_TRIM	-	-	-	-	stable	-	-
 switch	INTERVALS	-	-	-	-	stable	-	-
+switch	DEEPVARIANT_DISABLE_SMALL_MODEL	-	-	-	-	stable	-	-
 switch	ALIGN_DIR	-	-	-	-	stable	-	-
 switch	TOOLS	-	-	-	-	stable	-	-
 switch	KIR	-	-	-	-	experimental	-	-

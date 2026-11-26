@@ -100,6 +100,8 @@ excluded	SKIP_VALIDATION	-	-	skips a check, not a step
 excluded	THREADS	-	-	a resource cap, not a step
 excluded	SKIP_TRIM	-	-	skips fastp, so it removes a step
 excluded	INTERVALS	-	-	calls part of the genome, so it removes work
+excluded	DEEPVARIANT_DISABLE_SMALL_MODEL	-	-	changes the DeepVariant calling mode, not which steps run
+excluded	--deepvariant_disable_small_model	-	-	changes the DeepVariant calling mode, not which steps run
 excluded	OWNGENOME_LIVE_URL	-	-	the live site's address, not a step
 excluded	OWNGENOME_LIVE_STATE_DIR	-	-	the live site's state folder, where its ingest token is, not a step
 excluded	NXF_VER	-	-	the Nextflow release, not a step
